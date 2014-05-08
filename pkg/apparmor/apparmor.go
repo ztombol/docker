@@ -1,4 +1,5 @@
-// +build apparmor,linux,amd64
+// +build apparmor,linux
+// +build amd64 386
 
 package apparmor
 
