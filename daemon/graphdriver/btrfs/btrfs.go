@@ -31,7 +31,7 @@ func Init(home string) (graphdriver.Driver, error) {
 		return nil, err
 	}
 
-	if buf.Type != 0x9123683E {
+	if uint(buf.Type) != uint(0x9123683E) {
 		return nil, fmt.Errorf("%s is not a btrfs filesystem", rootdir)
 	}
 
