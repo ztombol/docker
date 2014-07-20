@@ -12,7 +12,7 @@ quick access to a test container.
     #
     # VERSION               0.0.1
 
-    FROM     debian
+    FROM     ubuntu:12.04
     MAINTAINER Thatcher R. Peskens "thatcher@dotcloud.com"
 
     # make sure the package repository is up to date
@@ -27,7 +27,7 @@ quick access to a test container.
 
 Build the image using:
 
-    $ sudo docker build --rm -t eg_sshd .
+    $ sudo docker build -t eg_sshd .
 
 Then run it. You can then use `docker port` to find out what host port
 the container's port 22 is mapped to:

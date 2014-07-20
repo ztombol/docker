@@ -4,7 +4,7 @@ page_keywords: Examples, Usage, volume, docker, documentation, user guide, data,
 
 # Managing Data in Containers
 
-So far we've been introduced some [basic Docker
+So far we've been introduced to some [basic Docker
 concepts](/userguide/usingdocker/), seen how to work with [Docker
 images](/userguide/dockerimages/) as well as learned about [networking
 and links between containers](/userguide/dockerlinks/). In this section
@@ -71,6 +71,24 @@ read-only.
 Here we've mounted the same `/src/webapp` directory but we've added the `ro`
 option to specify that the mount should be read-only.
 
+### Mount a Host File as a Data Volume
+
+The `-v` flag can also be used to mount a single file  - instead of *just* 
+directories - from the host machine.
+
+    $ sudo docker run --rm -it -v ~/.bash_history:/.bash_history ubuntu /bin/bash
+
+This will drop you into a bash shell in a new container, you will have your bash 
+history from the host and when you exit the container, the host will have the 
+history of the commands typed while in the container.
+
+> **Note:** 
+> Many tools used to edit files including `vi` and `sed --in-place` may result 
+> in an inode change. Since Docker v1.1.0, this will produce an error such as
+> "*sed: cannot rename ./sedKdJ9Dy: Device or resource busy*". In the case where 
+> you want to edit the mounted file, it is often easiest to instead mount the 
+> parent directory.
+
 ## Creating and mounting a Data Volume Container
 
 If you have some persistent data that you want to share between
@@ -80,23 +98,23 @@ it.
 
 Let's create a new named container with a volume to share.
 
-    $ docker run -d -v /dbdata --name dbdata training/postgres
+    $ sudo docker run -d -v /dbdata --name dbdata training/postgres
 
 You can then use the `--volumes-from` flag to mount the `/dbdata` volume in another container.
 
-    $ docker run -d --volumes-from dbdata --name db1 training/postgres
+    $ sudo docker run -d --volumes-from dbdata --name db1 training/postgres
 
 And another:
 
-    $ docker run -d --volumes-from dbdata --name db2 training/postgres
+    $ sudo docker run -d --volumes-from dbdata --name db2 training/postgres
 
-You can use multiple `-volumes-from` parameters to bring together multiple data
+You can use multiple `--volumes-from` parameters to bring together multiple data
 volumes from multiple containers.
 
 You can also extend the chain by mounting the volume that came from the
 `dbdata` container in yet another container via the `db1` or `db2` containers.
 
-    $ docker run -d --name db3 --volumes-from db1 training/postgres
+    $ sudo docker run -d --name db3 --volumes-from db1 training/postgres
 
 If you remove containers that mount volumes, including the initial `dbdata`
 container, or the subsequent containers `db1` and `db2`, the volumes will not
@@ -122,7 +140,7 @@ we'll be left with a backup of our `dbdata` volume.
 You could then to restore to the same container, or another that you've made
 elsewhere. Create a new container.
 
-    $ sudo docker run -v /dbdata --name dbdata2 ubuntu
+    $ sudo docker run -v /dbdata --name dbdata2 ubuntu /bin/bash
 
 Then un-tar the backup file in the new container's data volume.
 

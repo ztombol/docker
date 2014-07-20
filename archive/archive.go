@@ -27,6 +27,7 @@ type (
 	Compression   int
 	TarOptions    struct {
 		Includes    []string
+		Excludes    []string
 		Compression Compression
 		NoLchown    bool
 	}
@@ -42,6 +43,16 @@ const (
 	Gzip
 	Xz
 )
+
+func IsArchive(header []byte) bool {
+	compression := DetectCompression(header)
+	if compression != Uncompressed {
+		return true
+	}
+	r := tar.NewReader(bytes.NewBuffer(header))
+	_, err := r.Next()
+	return err == nil
+}
 
 func DetectCompression(source []byte) Compression {
 	for compression, m := range map[Compression][]byte{
@@ -166,15 +177,15 @@ func addTarFile(path, name string, tw *tar.Writer) error {
 	}
 
 	if hdr.Typeflag == tar.TypeReg {
-		if file, err := os.Open(path); err != nil {
+		file, err := os.Open(path)
+		if err != nil {
 			return err
-		} else {
-			_, err := io.Copy(tw, file)
-			if err != nil {
-				return err
-			}
-			file.Close()
 		}
+		if _, err := io.Copy(tw, file); err != nil {
+			file.Close()
+			return err
+		}
+		file.Close()
 	}
 
 	return nil
@@ -262,11 +273,11 @@ func createTarFile(path, extractDir string, hdr *tar.Header, reader io.Reader, L
 	ts := []syscall.Timespec{timeToTimespec(hdr.AccessTime), timeToTimespec(hdr.ModTime)}
 	// syscall.UtimesNano doesn't support a NOFOLLOW flag atm, and
 	if hdr.Typeflag != tar.TypeSymlink {
-		if err := system.UtimesNano(path, ts); err != nil {
+		if err := system.UtimesNano(path, ts); err != nil && err != system.ErrNotSupportedPlatform {
 			return err
 		}
 	} else {
-		if err := system.LUtimesNano(path, ts); err != nil {
+		if err := system.LUtimesNano(path, ts); err != nil && err != system.ErrNotSupportedPlatform {
 			return err
 		}
 	}
@@ -276,7 +287,7 @@ func createTarFile(path, extractDir string, hdr *tar.Header, reader io.Reader, L
 // Tar creates an archive from the directory at `path`, and returns it as a
 // stream of bytes.
 func Tar(path string, compression Compression) (io.ReadCloser, error) {
-	return TarFilter(path, &TarOptions{Compression: compression})
+	return TarWithOptions(path, &TarOptions{Compression: compression})
 }
 
 func escapeName(name string) string {
@@ -295,12 +306,9 @@ func escapeName(name string) string {
 	return string(escaped)
 }
 
-// TarFilter creates an archive from the directory at `srcPath` with `options`, and returns it as a
-// stream of bytes.
-//
-// Files are included according to `options.Includes`, default to including all files.
-// Stream is compressed according to `options.Compression', default to Uncompressed.
-func TarFilter(srcPath string, options *TarOptions) (io.ReadCloser, error) {
+// TarWithOptions creates an archive from the directory at `path`, only including files whose relative
+// paths are included in `options.Includes` (if non-nil) or not in `options.Excludes`.
+func TarWithOptions(srcPath string, options *TarOptions) (io.ReadCloser, error) {
 	pipeReader, pipeWriter := io.Pipe()
 
 	compressWriter, err := CompressStream(pipeWriter, options.Compression)
@@ -330,6 +338,21 @@ func TarFilter(srcPath string, options *TarOptions) (io.ReadCloser, error) {
 				relFilePath, err := filepath.Rel(srcPath, filePath)
 				if err != nil {
 					return nil
+				}
+
+				for _, exclude := range options.Excludes {
+					matched, err := filepath.Match(exclude, relFilePath)
+					if err != nil {
+						utils.Errorf("Error matching: %s (pattern: %s)", relFilePath, exclude)
+						return err
+					}
+					if matched {
+						utils.Debugf("Skipping excluded path: %s", relFilePath)
+						if f.IsDir() {
+							return filepath.SkipDir
+						}
+						return nil
+					}
 				}
 
 				if err := addTarFile(filePath, relFilePath, tw); err != nil {
@@ -443,7 +466,7 @@ func Untar(archive io.Reader, dest string, options *TarOptions) error {
 // TarUntar aborts and returns the error.
 func TarUntar(src string, dst string) error {
 	utils.Debugf("TarUntar(%s %s)", src, dst)
-	archive, err := TarFilter(src, &TarOptions{Compression: Uncompressed})
+	archive, err := TarWithOptions(src, &TarOptions{Compression: Uncompressed})
 	if err != nil {
 		return err
 	}
@@ -521,19 +544,19 @@ func CopyFileWithTar(src, dst string) (err error) {
 		}
 		defer srcF.Close()
 
-		tw := tar.NewWriter(w)
 		hdr, err := tar.FileInfoHeader(srcSt, "")
 		if err != nil {
 			return err
 		}
 		hdr.Name = filepath.Base(dst)
+		tw := tar.NewWriter(w)
+		defer tw.Close()
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
 		}
 		if _, err := io.Copy(tw, srcF); err != nil {
 			return err
 		}
-		tw.Close()
 		return nil
 	})
 	defer func() {

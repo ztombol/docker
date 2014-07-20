@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"github.com/dotcloud/docker/runconfig"
 	"io"
 	"io/ioutil"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dotcloud/docker/runconfig"
 )
 
 func TestKillDifferentUser(t *testing.T) {
@@ -60,44 +61,13 @@ func TestKillDifferentUser(t *testing.T) {
 	if container.State.IsRunning() {
 		t.Errorf("Container shouldn't be running")
 	}
-	container.Wait()
+	container.State.WaitStop(-1 * time.Second)
 	if container.State.IsRunning() {
 		t.Errorf("Container shouldn't be running")
 	}
 	// Try stopping twice
 	if err := container.Kill(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestRestart(t *testing.T) {
-	daemon := mkDaemon(t)
-	defer nuke(daemon)
-	container, _, err := daemon.Create(&runconfig.Config{
-		Image: GetTestImage(daemon).ID,
-		Cmd:   []string{"echo", "-n", "foobar"},
-	},
-		"",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer daemon.Destroy(container)
-	output, err := container.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(output) != "foobar" {
-		t.Error(string(output))
-	}
-
-	// Run the container again and check the output
-	output, err = container.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(output) != "foobar" {
-		t.Error(string(output))
 	}
 }
 
@@ -134,7 +104,7 @@ func TestRestartStdin(t *testing.T) {
 	if err := stdin.Close(); err != nil {
 		t.Fatal(err)
 	}
-	container.Wait()
+	container.State.WaitStop(-1 * time.Second)
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +134,7 @@ func TestRestartStdin(t *testing.T) {
 	if err := stdin.Close(); err != nil {
 		t.Fatal(err)
 	}
-	container.Wait()
+	container.State.WaitStop(-1 * time.Second)
 	output, err = ioutil.ReadAll(stdout)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +182,7 @@ func TestStdin(t *testing.T) {
 	if err := stdin.Close(); err != nil {
 		t.Fatal(err)
 	}
-	container.Wait()
+	container.State.WaitStop(-1 * time.Second)
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +227,7 @@ func TestTty(t *testing.T) {
 	if err := stdin.Close(); err != nil {
 		t.Fatal(err)
 	}
-	container.Wait()
+	container.State.WaitStop(-1 * time.Second)
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
 		t.Fatal(err)
@@ -366,7 +336,7 @@ func BenchmarkRunParallel(b *testing.B) {
 				complete <- err
 				return
 			}
-			if err := container.WaitTimeout(15 * time.Second); err != nil {
+			if _, err := container.State.WaitStop(15 * time.Second); err != nil {
 				complete <- err
 				return
 			}
@@ -420,7 +390,7 @@ func TestCopyVolumeUidGid(t *testing.T) {
 		t.Errorf("Container shouldn't be running")
 	}
 
-	img, err := r.Commit(container1, "", "", "unit test commited image", "", nil)
+	img, err := r.Commit(container1, "", "", "unit test commited image", "", true, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -446,7 +416,7 @@ func TestCopyVolumeUidGid(t *testing.T) {
 		t.Errorf("Container shouldn't be running")
 	}
 
-	img2, err := r.Commit(container2, "", "", "unit test commited image", "", nil)
+	img2, err := r.Commit(container2, "", "", "unit test commited image", "", true, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -480,7 +450,7 @@ func TestCopyVolumeContent(t *testing.T) {
 		t.Errorf("Container shouldn't be running")
 	}
 
-	img, err := r.Commit(container1, "", "", "unit test commited image", "", nil)
+	img, err := r.Commit(container1, "", "", "unit test commited image", "", true, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -523,49 +493,5 @@ func TestBindMounts(t *testing.T) {
 	content := readFile(path.Join(tmpDir, "holla"), t) // Will fail if the file doesn't exist
 	if content != "yotta" {
 		t.Fatal("Container failed to write to bind mount file")
-	}
-}
-
-// Test that restarting a container with a volume does not create a new volume on restart. Regression test for #819.
-func TestRestartWithVolumes(t *testing.T) {
-	daemon := mkDaemon(t)
-	defer nuke(daemon)
-
-	container, _, err := daemon.Create(&runconfig.Config{
-		Image:   GetTestImage(daemon).ID,
-		Cmd:     []string{"echo", "-n", "foobar"},
-		Volumes: map[string]struct{}{"/test": {}},
-	},
-		"",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer daemon.Destroy(container)
-
-	for key := range container.Config.Volumes {
-		if key != "/test" {
-			t.Fail()
-		}
-	}
-
-	_, err = container.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expected := container.Volumes["/test"]
-	if expected == "" {
-		t.Fail()
-	}
-	// Run the container again to verify the volume path persists
-	_, err = container.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	actual := container.Volumes["/test"]
-	if expected != actual {
-		t.Fatalf("Expected volume path: %s Actual path: %s", expected, actual)
 	}
 }

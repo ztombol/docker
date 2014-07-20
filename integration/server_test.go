@@ -2,13 +2,11 @@ package docker
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/dotcloud/docker/engine"
 	"github.com/dotcloud/docker/runconfig"
-	"github.com/dotcloud/docker/server"
 )
 
 func TestCreateNumberHostname(t *testing.T) {
@@ -16,18 +14,6 @@ func TestCreateNumberHostname(t *testing.T) {
 	defer mkDaemonFromEngine(eng, t).Nuke()
 
 	config, _, _, err := runconfig.Parse([]string{"-h", "web.0", unitTestImageID, "echo test"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	createTestContainer(eng, config, t)
-}
-
-func TestCreateNumberUsername(t *testing.T) {
-	eng := NewTestEngine(t)
-	defer mkDaemonFromEngine(eng, t).Nuke()
-
-	config, _, _, err := runconfig.Parse([]string{"-u", "1002", unitTestImageID, "echo test"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,92 +257,6 @@ func TestRunWithTooLowMemoryLimit(t *testing.T) {
 	}
 }
 
-func TestRmi(t *testing.T) {
-	eng := NewTestEngine(t)
-	srv := mkServerFromEngine(eng, t)
-	defer mkDaemonFromEngine(eng, t).Nuke()
-
-	initialImages := getAllImages(eng, t)
-
-	config, hostConfig, _, err := runconfig.Parse([]string{unitTestImageID, "echo", "test"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	containerID := createTestContainer(eng, config, t)
-
-	//To remove
-	job := eng.Job("start", containerID)
-	if err := job.ImportEnv(hostConfig); err != nil {
-		t.Fatal(err)
-	}
-	if err := job.Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := eng.Job("wait", containerID).Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	job = eng.Job("commit", containerID)
-	job.Setenv("repo", "test")
-	var outputBuffer = bytes.NewBuffer(nil)
-	job.Stdout.Add(outputBuffer)
-	if err := job.Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := eng.Job("tag", engine.Tail(outputBuffer, 1), "test", "0.1").Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	containerID = createTestContainer(eng, config, t)
-
-	//To remove
-	job = eng.Job("start", containerID)
-	if err := job.ImportEnv(hostConfig); err != nil {
-		t.Fatal(err)
-	}
-	if err := job.Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := eng.Job("wait", containerID).Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	job = eng.Job("commit", containerID)
-	job.Setenv("repo", "test")
-	if err := job.Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	images := getAllImages(eng, t)
-
-	if images.Len()-initialImages.Len() != 2 {
-		t.Fatalf("Expected 2 new images, found %d.", images.Len()-initialImages.Len())
-	}
-
-	if err = srv.DeleteImage(engine.Tail(outputBuffer, 1), engine.NewTable("", 0), true, false, false); err != nil {
-		t.Fatal(err)
-	}
-
-	images = getAllImages(eng, t)
-
-	if images.Len()-initialImages.Len() != 1 {
-		t.Fatalf("Expected 1 new image, found %d.", images.Len()-initialImages.Len())
-	}
-
-	for _, image := range images.Data {
-		if strings.Contains(unitTestImageID, image.Get("Id")) {
-			continue
-		}
-		if image.GetList("RepoTags")[0] == "<none>:<none>" {
-			t.Fatalf("Expected tagged image, got untagged one.")
-		}
-	}
-}
-
 func TestImagesFilter(t *testing.T) {
 	eng := NewTestEngine(t)
 	defer nuke(mkDaemonFromEngine(eng, t))
@@ -396,120 +296,6 @@ func TestImagesFilter(t *testing.T) {
 	if len(images.Data[0].GetList("RepoTags")) != 1 {
 		t.Fatal("incorrect number of matches returned")
 	}
-}
-
-func TestListContainers(t *testing.T) {
-	eng := NewTestEngine(t)
-	srv := mkServerFromEngine(eng, t)
-	defer mkDaemonFromEngine(eng, t).Nuke()
-
-	config := runconfig.Config{
-		Image:     unitTestImageID,
-		Cmd:       []string{"/bin/sh", "-c", "cat"},
-		OpenStdin: true,
-	}
-
-	firstID := createTestContainer(eng, &config, t)
-	secondID := createTestContainer(eng, &config, t)
-	thirdID := createTestContainer(eng, &config, t)
-	fourthID := createTestContainer(eng, &config, t)
-	defer func() {
-		containerKill(eng, firstID, t)
-		containerKill(eng, secondID, t)
-		containerKill(eng, fourthID, t)
-		containerWait(eng, firstID, t)
-		containerWait(eng, secondID, t)
-		containerWait(eng, fourthID, t)
-	}()
-
-	startContainer(eng, firstID, t)
-	startContainer(eng, secondID, t)
-	startContainer(eng, fourthID, t)
-
-	// all
-	if !assertContainerList(srv, true, -1, "", "", []string{fourthID, thirdID, secondID, firstID}) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// running
-	if !assertContainerList(srv, false, -1, "", "", []string{fourthID, secondID, firstID}) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// from here 'all' flag is ignored
-
-	// limit
-	expected := []string{fourthID, thirdID}
-	if !assertContainerList(srv, true, 2, "", "", expected) ||
-		!assertContainerList(srv, false, 2, "", "", expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// since
-	expected = []string{fourthID, thirdID, secondID}
-	if !assertContainerList(srv, true, -1, firstID, "", expected) ||
-		!assertContainerList(srv, false, -1, firstID, "", expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// before
-	expected = []string{secondID, firstID}
-	if !assertContainerList(srv, true, -1, "", thirdID, expected) ||
-		!assertContainerList(srv, false, -1, "", thirdID, expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// since & before
-	expected = []string{thirdID, secondID}
-	if !assertContainerList(srv, true, -1, firstID, fourthID, expected) ||
-		!assertContainerList(srv, false, -1, firstID, fourthID, expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// since & limit
-	expected = []string{fourthID, thirdID}
-	if !assertContainerList(srv, true, 2, firstID, "", expected) ||
-		!assertContainerList(srv, false, 2, firstID, "", expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// before & limit
-	expected = []string{thirdID}
-	if !assertContainerList(srv, true, 1, "", fourthID, expected) ||
-		!assertContainerList(srv, false, 1, "", fourthID, expected) {
-		t.Error("Container list is not in the correct order")
-	}
-
-	// since & before & limit
-	expected = []string{thirdID}
-	if !assertContainerList(srv, true, 1, firstID, fourthID, expected) ||
-		!assertContainerList(srv, false, 1, firstID, fourthID, expected) {
-		t.Error("Container list is not in the correct order")
-	}
-}
-
-func assertContainerList(srv *server.Server, all bool, limit int, since, before string, expected []string) bool {
-	job := srv.Eng.Job("containers")
-	job.SetenvBool("all", all)
-	job.SetenvInt("limit", limit)
-	job.Setenv("since", since)
-	job.Setenv("before", before)
-	outs, err := job.Stdout.AddListTable()
-	if err != nil {
-		return false
-	}
-	if err := job.Run(); err != nil {
-		return false
-	}
-	if len(outs.Data) != len(expected) {
-		return false
-	}
-	for i := 0; i < len(outs.Data); i++ {
-		if outs.Data[i].Get("Id") != expected[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // Regression test for being able to untag an image with an existing

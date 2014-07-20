@@ -36,7 +36,6 @@ func prepareVolumesForContainer(container *Container) error {
 
 func setupMountsForContainer(container *Container) error {
 	mounts := []execdriver.Mount{
-		{container.daemon.sysInitPath, "/.dockerinit", false, true},
 		{container.ResolvConfPath, "/etc/resolv.conf", false, true},
 	}
 
@@ -98,12 +97,17 @@ func applyVolumesFrom(container *Container) error {
 					continue
 				}
 
-				stat, err := os.Stat(c.getResourcePath(volPath))
+				pth, err := c.getResourcePath(volPath)
 				if err != nil {
 					return err
 				}
 
-				if err := createIfNotExists(container.getResourcePath(volPath), stat.IsDir()); err != nil {
+				stat, err := os.Stat(pth)
+				if err != nil {
+					return err
+				}
+
+				if err := createIfNotExists(pth, stat.IsDir()); err != nil {
 					return err
 				}
 
@@ -280,8 +284,8 @@ func initializeVolume(container *Container, volPath string, binds map[string]Bin
 		delete(container.VolumesRW, volPath)
 	}
 
-	container.Volumes[newVolPath] = destination
-	container.VolumesRW[newVolPath] = srcRW
+	container.Volumes[volPath] = destination
+	container.VolumesRW[volPath] = srcRW
 
 	if err := createIfNotExists(source, volIsDir); err != nil {
 		return err

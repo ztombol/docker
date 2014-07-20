@@ -70,7 +70,7 @@ If instead we wanted to build an Ubuntu 12.04 image we'd use:
     $ sudo docker run -t -i ubuntu:12.04 /bin/bash
 
 If you don't specify a variant, for example you just use `ubuntu`, then Docker
-will default to using the `ubunut:latest` image.
+will default to using the `ubuntu:latest` image.
 
 > **Tip:** 
 > We recommend you always use a specific tagged image, for example
@@ -239,7 +239,7 @@ Let's create a directory and a `Dockerfile` first.
     $ cd sinatra
     $ touch Dockerfile
 
-Each instructions creates a new layer of the image. Let's look at a simple
+Each instruction creates a new layer of the image. Let's look at a simple
 example now for building our own Sinatra image for our development team.
 
     # This is a comment
@@ -328,9 +328,14 @@ instructions have executed we're left with the `324104cde6ad` image
 (also helpfully tagged as `ouruser/sinatra:v2`) and all intermediate
 containers will get removed to clean things up.
 
+> **Note:** 
+> An image can't have more than 127 layers regardless of the storage driver.
+> This limitation is set globally to encourage optimization of the overall 
+> size of images.
+
 We can then create a container from our new image.
 
-    $ sudo docker run -t -i ouruser/sinatra /bin/bash
+    $ sudo docker run -t -i ouruser/sinatra:v2 /bin/bash
     root@8196968dac35:/#
 
 > **Note:** 
@@ -380,7 +385,7 @@ containers](
 
 Let's delete the `training/sinatra` image as we don't need it anymore.
 
-    $ docker rmi training/sinatra
+    $ sudo docker rmi training/sinatra
     Untagged: training/sinatra:latest
     Deleted: 5bc342fa0b91cabf65246837015197eecfa24b2213ed6a51a8974ae250fedd8d
     Deleted: ed0fffdcdae5eb2c3a55549857a8be7fc8bc4241fb19ad714364cbfd7a56b22f

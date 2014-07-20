@@ -27,7 +27,7 @@ Let's start by creating a basic `Dockerfile` for our
 new image.
 
     FROM ubuntu:13.04
-    MAINTAINER examples@docker.io
+    MAINTAINER examples@docker.com
     RUN echo "deb http://archive.ubuntu.com/ubuntu precise main universe" > /etc/apt/sources.list
     RUN apt-get update
     RUN apt-get upgrade -y
@@ -52,7 +52,7 @@ Now let's add a configuration file for Supervisor. The default file is
 called `supervisord.conf` and is located in
 `/etc/supervisor/conf.d/`.
 
-    ADD supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+    COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 Let's see what is inside our `supervisord.conf`
 file.
